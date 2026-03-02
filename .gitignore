@@ -1,0 +1,21 @@
+# Python
+__Pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Vittual env
+.venv/
+venv/
+env/
+
+# VSCode
+.vscode/
+
+# Data files (不上传绘画数据)
+data/
+
+# OS
+.DS_Store
+Thumbs.db
