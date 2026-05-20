@@ -463,6 +463,78 @@ Default (no flags) runs v0.2 in networked mode, expecting nodes to connect via W
 
 ---
 
+# 20. v0.3 Persona + Memory Persistence + QQ Integration
+
+## 20.1 Overview
+
+v0.3 adds three independent capabilities on top of the v0.2 federated architecture:
+
+1. **SoulPersona** — character card that defines Soul's identity
+2. **SQLite Memory** — persistent per-session conversation storage
+3. **QQ Connector** — bridge to NapCatQQ (OneBot v11)
+
+All three are independent modules. QQ can be disabled without affecting persona or memory.
+
+## 20.2 New/Modified Files
+
+```
+src/soul/
+  contracts/
+    personality.py  # [NEW] SoulPersona model
+  nodes/
+    memory.py       # [REWRITTEN] SQLite persistence
+    reasoning.py    # [MODIFIED] Persona-driven prompt builder
+  connectors/
+    qq_connector.py # [NEW] NapCatQQ OneBot v11 bridge
+    websocket_server.py  # [MODIFIED] --qq flag, persona loading
+
+data/
+  persona.yaml      # [NEW] Editable character card
+  memory.db         # [NEW] SQLite database (auto-created)
+
+soul.yaml           # [MODIFIED] qq / memory / persona sections
+```
+
+## 20.3 SoulPersona
+
+Defined in `contracts/personality.py`. A Pydantic model with:
+- `name`, `description`, `personality`, `speaking_style`
+- `interests`, `avoid_topics`, `background`
+- `to_system_prompt()` — generates the role-defining portion of the LLM prompt
+
+Users edit `data/persona.yaml` to change Soul's character. No code changes needed.
+
+## 20.4 Memory Persistence
+
+MemoryNode rewritten with SQLite backend at `data/memory.db`.
+
+Tables:
+- `utterances` — every conversation turn (user + assistant)
+- `person_profile` — per-session knowledge (known_facts, relationship, conversation_count)
+
+Profile fields evolve naturally: `known_facts` is a JSON dict populated via `memory.write` actions. `relationship` is a free-text field updated by the LLM as Soul gets to know someone.
+
+## 20.5 QQ Integration
+
+QQConnector bridges NapCatQQ (OneBot v11) to Soul.
+
+- Session mapping: `qq_private_{user_id}` / `qq_group_{group_id}`
+- All messages flow through the pipeline
+- LLM decides whether to respond (no hard-coded reply rules)
+- Response.text empty → no message sent (natural silence)
+
+Enabled via `--qq` flag or `qq.enabled: true` in soul.yaml.
+
+## 20.6 Module Independence
+
+Each module works independently:
+- SoulPersona: pure data model, zero dependencies
+- MemoryNode: works with any session_id, no QQ dependency
+- QQConnector: can be disabled entirely, Soul still works via WebSocket
+- ReasoningNode: reads persona + memory, doesn't know about QQ
+
+---
+
 # End of Specification
 
 This document governs all Soul core model design.

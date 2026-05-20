@@ -6,6 +6,7 @@ dependencies = [
   "pydantic>=2.6",
   "websockets>=12.0",
   "requests",
+  "pyyaml>=6.0",
 ]
 
 [build-system]

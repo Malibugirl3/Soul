@@ -4,21 +4,23 @@ import json
 import re
 from typing import Dict, List, Optional
 
-from ..contracts.events import Event, SourceInfo
+from ..contracts.events import Event
 from ..contracts.response import Response, Action
-from ..contracts.state import SoulState, Utterance
-from ..contracts.protocol import EventName, MAX_WORKING_MEMORY
+from ..contracts.state import SoulState
+from ..contracts.protocol import EventName
 from ..contracts.capability import ActionSchema
+from ..contracts.personality import SoulPersona
 
 from .base import BaseNode
+from .memory import MemoryNode
 from ..runtime.llm.ollama_client import OllamaClient
 
 
 class ReasoningNode(BaseNode):
-    """LLM-powered decision node. Extracted from the old SoulEngine.
+    """LLM-powered decision node with persona-driven conversation.
 
-    Receives enriched events (with perception + memory context),
-    calls the LLM to decide what to say and what actions to invoke.
+    Builds a role-playing prompt from SoulPersona + memory context,
+    then calls the LLM to produce a natural response + optional actions.
     """
 
     def __init__(
@@ -26,6 +28,7 @@ class ReasoningNode(BaseNode):
         node_id: str = "reasoning-01",
         model: str = "qwen2.5:3b",
         base_url: str = "http://localhost:11434",
+        persona: Optional[SoulPersona] = None,
         action_registry=None,
         standalone: bool = False,
     ) -> None:
@@ -39,7 +42,11 @@ class ReasoningNode(BaseNode):
         super().__init__(identity, standalone=standalone)
         self.llm = OllamaClient(model=model)
         self.llm.base_url = base_url
+        self._persona = persona or SoulPersona()
         self._action_registry = action_registry
+
+    def set_persona(self, persona: SoulPersona) -> None:
+        self._persona = persona
 
     def set_action_registry(self, registry) -> None:
         self._action_registry = registry
@@ -81,50 +88,81 @@ class ReasoningNode(BaseNode):
         except Exception as e:
             return Response(
                 ts=event.ts,
-                text=f"(Reasoning) LLM error: {e}",
+                text="",
                 debug={"error": str(e)},
             )
 
         return self._parse_output(event.ts, llm_output)
 
+    # ---- prompt building -----------------------------------------------
+
     def _build_prompt(self, event: Event) -> str:
-        parts = []
+        parts: List[str] = []
+        context = event.data
 
-        # System prompt
-        parts.append(
-            "You are a friendly AI assistant. You receive context from other modules "
-            "and should respond naturally. You can also invoke actions when needed."
-        )
+        # 1. Persona — WHO Soul is (not WHAT to do)
+        parts.append(self._persona.to_system_prompt())
 
-        # Tool catalogue from ActionRegistry
+        # 2. Scene context (group vs private)
+        scene = context.get("scene", "private")
+        if scene == "group":
+            sender_name = context.get("sender_name", event.source.display or "someone")
+            parts.append(
+                f"\n你现在在一个 QQ 群里。大家正在聊天。刚才说话的人是 {sender_name}。\n"
+                "除非有人直接跟你说话，或者你真的有话想说，再回复。保持自然即可。"
+            )
+
+        # 3. Perception — time / environment context
+        perception = context.get("perception")
+        if perception and isinstance(perception, dict):
+            time_of_day = perception.get("time_of_day", "")
+            if time_of_day:
+                parts.append(f"\n现在是{time_of_day}。")
+
+        # 4. Memory — who Soul is talking to + recent conversation
+        memory = context.get("memory")
+        if memory and isinstance(memory, dict):
+            profile = memory.get("person_profile")
+            recent = memory.get("recent_utterations")
+
+            if profile:
+                profile_text = MemoryNode.format_person_profile(profile)
+                parts.append(f"\n关于你正在对话的对象：\n{profile_text}")
+
+            if recent:
+                recent_text = MemoryNode.format_recent_utterances(recent)
+                parts.append(f"\n最近的对话记录：\n{recent_text}")
+
+        # 5. Available actions (for memory.write, etc.)
         if self._action_registry:
             catalogue = self._action_registry.get_tool_catalogue()
             if catalogue:
-                parts.append(f"\n{catalogue}\n")
+                parts.append(f"\n你可以在回复中使用以下内部功能：\n{catalogue}\n")
                 parts.append(
-                    "When you need to use an action, include an ACTION block:\n"
-                    'ACTION: {"type": "<action_type>", "params": {...}}\n'
+                    "使用方式：在回复末尾添加 ACTION: {\"type\": \"<功能>\", \"params\": {...}}"
                 )
 
-        # Context from prior pipeline steps
-        context = event.data
-        if context.get("perception"):
-            parts.append(f"\n[Perception] {json.dumps(context['perception'], ensure_ascii=False)}")
-        if context.get("memory"):
-            parts.append(f"\n[Memory] {json.dumps(context['memory'], ensure_ascii=False)}")
-        if context.get("_prior_texts"):
-            parts.append(f"\n[Prior] {' | '.join(context['_prior_texts'])}")
+        # 6. Natural conversation reminder (gentle, not rules)
+        parts.append(
+            f"\n现在，请以 {self._persona.name} 的身份自然地回复。记住你是在跟人聊天：\n"
+            "- 可以反问、可以分享自己的看法、可以说不知道\n"
+            "- 回复简短自然，不要长篇大论\n"
+            "- 用自己的说话方式，不要模仿对方\n"
+        )
 
-        # User message
-        parts.append(f"\nUser: {event.text}\nAssistant:")
+        # 7. Current message
+        sender = event.source.display or "User"
+        parts.append(f"\n{sender}: {event.text}")
 
         return "\n".join(parts)
+
+    # ---- output parsing ------------------------------------------------
 
     def _parse_output(self, ts: int, llm_output: str) -> Response:
         text = llm_output.strip()
         actions: List[Action] = []
 
-        # Extract ACTION blocks from the output
+        # Extract ACTION blocks
         action_pattern = r'ACTION:\s*(\{[^}]+\})'
         for match in re.finditer(action_pattern, text):
             try:
@@ -139,11 +177,11 @@ class ReasoningNode(BaseNode):
                 pass
             text = text.replace(match.group(0), "").strip()
 
-        # If the whole output is valid JSON, parse it as structured output
+        # Check for structured JSON output
         if not actions and llm_output.strip().startswith("{"):
             try:
                 data = json.loads(llm_output)
-                text = data.get("text", llm_output)
+                text = data.get("text", text)
                 for a in data.get("actions", []):
                     actions.append(
                         Action(type=a.get("type", ""), params=a.get("params", {}))
@@ -151,7 +189,8 @@ class ReasoningNode(BaseNode):
             except json.JSONDecodeError:
                 pass
 
-        if not text:
-            text = "(no response)"
+        # Always add a text.send action so ActionNode routes the reply
+        if text and text != "(no response)":
+            actions.insert(0, Action(type="text.send", params={"text": text}))
 
         return Response(ts=ts, text=text, actions=actions)

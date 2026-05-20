@@ -1,4 +1,4 @@
-# Soul v0.2 Federated Configuration
+# Soul v0.3 Configuration
 
 core:
   host: "127.0.0.1"
@@ -21,7 +21,8 @@ nodes:
     model: "qwen2.5:3b"
     base_url: "http://localhost:11434"
   memory:
-    max_working_memory: 20
+    db_path: "data/memory.db"
+    max_recent_utterances: 30
   perception:
     timezone: "Asia/Shanghai"
   action:
@@ -30,3 +31,14 @@ nodes:
 # true = all nodes run in-process (development)
 # false = nodes run as separate processes, connected via WebSocket
 standalone: true
+
+# QQ integration via NapCatQQ (OneBot v11)
+# Soul works fine without QQ — just set enabled: false
+qq:
+  enabled: false
+  napcat_ws_url: "ws://127.0.0.1:3001"
+  napcat_http_url: "http://127.0.0.1:3000"
+
+# Character persona — edit data/persona.yaml to change Soul's personality
+persona:
+  file: "data/persona.yaml"

@@ -7,3 +7,4 @@ from .node import NodeIdentity, NodeRegistration, NodeStatus
 from .capability import ActionSchema, CapabilityManifest
 from .spark import SparkMessage
 from .subscription import StateSubscription, StateChangeNotification
+from .personality import SoulPersona

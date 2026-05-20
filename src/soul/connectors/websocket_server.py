@@ -4,13 +4,16 @@ import asyncio
 import json
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import websockets
 from websockets.asyncio.server import ServerConnection
+import yaml
 
 from ..contracts.envelope import Envelope
 from ..contracts.protocol import MessageType, PROTOCOL_VERSION
+from ..contracts.personality import SoulPersona
 from ..core.router import Router
 from ..core.node_registry import NodeRegistry
 from ..core.action_registry import ActionRegistry
@@ -19,6 +22,10 @@ from ..core.state_aggregator import StateAggregator
 from ..core.pipeline import Pipeline
 from ..core.session_manager import SessionManager
 from ..nodes.reasoning import ReasoningNode
+from ..nodes.memory import MemoryNode
+from ..nodes.perception import PerceptionNode
+from ..nodes.action import ActionNode
+from .qq_connector import QQConnector
 
 
 def now_ms() -> int:
@@ -27,6 +34,24 @@ def now_ms() -> int:
 
 def new_id() -> str:
     return uuid.uuid4().hex
+
+
+def _load_config(path: str = "soul.yaml") -> Dict:
+    cfg_path = Path(path)
+    if cfg_path.exists():
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
+def _load_persona(path: str = "data/persona.yaml") -> SoulPersona:
+    cfg_path = Path(path)
+    if cfg_path.exists():
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    else:
+        data = {}
+    return SoulPersona(**data)
 
 
 class WebSocketSoulServer:
@@ -41,8 +66,17 @@ class WebSocketSoulServer:
       anything else  -> client connection
     """
 
-    def __init__(self, standalone: bool = False) -> None:
+    def __init__(
+        self,
+        standalone: bool = False,
+        qq_enabled: bool = False,
+        config: Optional[Dict] = None,
+    ) -> None:
         self.standalone = standalone
+        self.qq_enabled = qq_enabled
+        cfg = config or {}
+
+        # Core infrastructure
         self._sm = SessionManager()
         self._state = StateAggregator(self._sm)
         self._nodes = NodeRegistry()
@@ -60,22 +94,73 @@ class WebSocketSoulServer:
             state_aggregator=self._state,
             pipeline=self._pipeline,
         )
-        # Track node WS connections for event forwarding
         self._node_connections: Dict[str, ServerConnection] = {}
 
-        # Standalone: wire in-process nodes
+        # Standalone: wire all nodes in-process
         if standalone:
-            self._reasoning = ReasoningNode(
-                node_id="reasoning-01", standalone=True
+            node_cfg = cfg.get("nodes", {})
+
+            # Load persona
+            persona_path = cfg.get("persona", {}).get("file", "data/persona.yaml")
+            self._persona = _load_persona(persona_path)
+
+            # Memory node (SQLite)
+            mem_cfg = node_cfg.get("memory", {})
+            self._memory = MemoryNode(
+                node_id="memory-01",
+                db_path=mem_cfg.get("db_path", "data/memory.db"),
+                max_recent_utterances=mem_cfg.get("max_recent_utterances", 30),
+                standalone=True,
             )
-            self._reasoning.set_action_registry(self._actions)
+            self._pipeline.set_forward_handler("memory", self._memory.forward_handler)
+
+            # Perception node
+            perc_cfg = node_cfg.get("perception", {})
+            self._perception = PerceptionNode(
+                node_id="perception-01",
+                tz_name=perc_cfg.get("timezone", "Asia/Shanghai"),
+                standalone=True,
+            )
+            self._pipeline.set_forward_handler(
+                "perception", self._perception.forward_handler
+            )
+
+            # Reasoning node (with persona + action registry)
+            reason_cfg = node_cfg.get("reasoning", {})
+            self._reasoning = ReasoningNode(
+                node_id="reasoning-01",
+                model=reason_cfg.get("model", "qwen2.5:3b"),
+                base_url=reason_cfg.get("base_url", "http://localhost:11434"),
+                persona=self._persona,
+                action_registry=self._actions,
+                standalone=True,
+            )
             self._pipeline.set_forward_handler(
                 "reasoning", self._reasoning.forward_handler
             )
 
+            # Action node
+            self._action = ActionNode(node_id="action-01", standalone=True)
+            self._pipeline.set_forward_handler("action", self._action.forward_handler)
+
+            # QQ connector
+            if qq_enabled:
+                qq_cfg = cfg.get("qq", {})
+                self._qq = QQConnector(
+                    napcat_ws_url=qq_cfg.get("napcat_ws_url", "ws://127.0.0.1:3001"),
+                    napcat_http_url=qq_cfg.get("napcat_http_url", "http://127.0.0.1:3000"),
+                    router=self.router,
+                )
+                # Wire assistant reply → memory storage
+                self._qq.on_assistant_reply = self._memory.store_assistant_reply
+
     async def start(self) -> None:
         await self.router.start()
         self._nodes.on_node_leave(self._on_node_disconnect)
+
+        # Connect QQ if enabled
+        if self.qq_enabled and hasattr(self, "_qq"):
+            asyncio.create_task(self._qq.connect())
 
     async def handler(self, conn: ServerConnection) -> None:
         first = True
@@ -100,12 +185,10 @@ class WebSocketSoulServer:
                 first = False
                 if env.type == MessageType.register:
                     is_node_conn = True
-                    # Handle registration inline so we get node_id
                     result = await self.router.route(env, conn)
                     if result and result.type == MessageType.register_ack:
                         node_id = result.payload.get("node_id", "")
                         self._node_connections[node_id] = conn
-                        # Wire Pipeline forward handler for this node type
                         info = self._nodes.get(node_id)
                         if info:
                             self._pipeline.set_forward_handler(
@@ -122,7 +205,6 @@ class WebSocketSoulServer:
                     continue
 
             if is_node_conn:
-                # Forward node messages to the router
                 result = await self.router.route(env, conn)
                 if result:
                     await conn.send(
@@ -174,8 +256,6 @@ class WebSocketSoulServer:
             await node_conn.send(
                 json.dumps(self._serialize_envelope(fwd), ensure_ascii=False)
             )
-            # Wait for response — in real networked mode this would be
-            # async, but for now return a placeholder
             return None
 
         return forward
@@ -207,14 +287,20 @@ class WebSocketSoulServer:
 
 
 async def main(
-    host: str = "127.0.0.1", port: int = 8765, standalone: bool = False
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    standalone: bool = False,
+    qq: bool = False,
+    config_path: str = "soul.yaml",
 ) -> None:
-    server = WebSocketSoulServer(standalone=standalone)
+    cfg = _load_config(config_path)
+    server = WebSocketSoulServer(standalone=standalone, qq_enabled=qq, config=cfg)
     await server.start()
     mode = "standalone" if standalone else "networked"
+    extra = " +QQ" if qq else ""
     async with websockets.serve(server.handler, host, port):
         print(
-            f"[Soul v0.2] WebSocket server on ws://{host}:{port}/ws ({mode} mode)"
+            f"[Soul v0.3] WebSocket server on ws://{host}:{port}/ws ({mode} mode{extra})"
         )
         await asyncio.Future()
 
@@ -230,6 +316,12 @@ if __name__ == "__main__":
         "--host", default="127.0.0.1", help="Bind host"
     )
     parser.add_argument("--port", type=int, default=8765, help="Bind port")
+    parser.add_argument(
+        "--qq", action="store_true", help="Enable QQ connector (NapCat OneBot v11)"
+    )
+    parser.add_argument(
+        "--config", default="soul.yaml", help="Path to config file"
+    )
     parser.add_argument(
         "--legacy",
         action="store_true",
@@ -322,4 +414,4 @@ if __name__ == "__main__":
 
         asyncio.run(legacy_main())
     else:
-        asyncio.run(main(args.host, args.port, args.standalone))
+        asyncio.run(main(args.host, args.port, args.standalone, args.qq, args.config))

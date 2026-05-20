@@ -7,7 +7,16 @@
       "Bash(python -c \"from src.soul.core import *; from src.soul.contracts import *; import asyncio; sm = SessionManager\\(\\); sa = StateAggregator\\(sm\\); nr = NodeRegistry\\(\\); ar = ActionRegistry\\(\\); eb = EventBus\\(\\); pl = Pipeline\\(node_registry=nr, event_bus=eb, state_aggregator=sa\\); router = Router\\(node_registry=nr, action_registry=ar, event_bus=eb, state_aggregator=sa, pipeline=pl\\); print\\('All Core components instantiated OK'\\); print\\('Router dispatch table:', list\\(router._dispatch.keys\\(\\)\\)\\)\")",
       "Bash(python -m src.soul.connectors.websocket_server --standalone)",
       "Bash(python tests/ws_client.py)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(cd /d D:\\\\Workspaces\\\\FunPro\\\\Soul)",
+      "Bash(python -c \"from src.soul.contracts.personality import SoulPersona; p = SoulPersona\\(\\); print\\(p.to_system_prompt\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"from src.soul.nodes.memory import MemoryNode; print\\('OK'\\)\")",
+      "Bash(python -c \"from src.soul.nodes.reasoning import ReasoningNode; print\\('OK'\\)\"、)",
+      "Bash(python -c \"from src.soul.nodes.reasoning import ReasoningNode; print\\('OK'\\)\")",
+      "Bash(python -c \"from src.soul.connectors.qq_connector import QQConnector; print\\('OK'\\)\")",
+      "Bash(python -c \"from src.soul.connectors.websocket_server import _load_persona, _load_config; print\\('OK'\\)\")",
+      "Bash(pip install *)",
+      "Bash(timeout 15 python -c ' *)"
     ]
   }
 }
