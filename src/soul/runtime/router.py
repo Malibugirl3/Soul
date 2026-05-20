@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import warnings
 from typing import Optional
+
+warnings.warn(
+    "runtime.Router is deprecated. Use core.Router instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from ..contracts.envelope import Envelope
 from ..contracts.protocol import MessageType
 from ..contracts.events import Event

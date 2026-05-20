@@ -1,0 +1,32 @@
+# Soul v0.2 Federated Configuration
+
+core:
+  host: "127.0.0.1"
+  port: 8765
+
+pipeline:
+  # Default processing chain for user.message events
+  user.message:
+    steps: ["perception", "memory", "reasoning", "action"]
+    step_timeout_ms: 10000
+    skip_on_error: true
+
+  # For mode.set, only reasoning is needed
+  mode.set:
+    steps: ["reasoning", "action"]
+    step_timeout_ms: 5000
+
+nodes:
+  reasoning:
+    model: "qwen2.5:3b"
+    base_url: "http://localhost:11434"
+  memory:
+    max_working_memory: 20
+  perception:
+    timezone: "Asia/Shanghai"
+  action:
+    enabled_actions: ["text.send", "state.set", "state.patch"]
+
+# true = all nodes run in-process (development)
+# false = nodes run as separate processes, connected via WebSocket
+standalone: true

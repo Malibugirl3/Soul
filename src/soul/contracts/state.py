@@ -57,7 +57,8 @@ class SoulState(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
-    schema_id: str = Field(default="soul.memory/1")
+    schema_id: str = Field(default="soul.state/1")
+    state_version: int = 0
     session_id: str
 
     mode: ModeState = Field(default_factory=ModeState)

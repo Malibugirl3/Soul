@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 import re
+import warnings
 from typing import Tuple, Optional
+
+warnings.warn(
+    "runtime.SoulEngine is deprecated. Use core.Router + nodes.ReasoningNode instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from ..contracts.events import Event
 from ..contracts.response import Response
@@ -9,6 +16,7 @@ from ..contracts.state import SoulState, Utterance
 from ..contracts.protocol import EventName, MAX_WORKING_MEMORY
 
 from .llm.ollama_client import OllamaClient
+
 
 class SoulEngine:
     """
@@ -51,7 +59,7 @@ class SoulEngine:
             debug = {
                 "turn_index": state.dialog.turn_index,
                 "mode": state.mode.name,
-                "event_name": event.name.value,
+                "event_name": event.name,
             },
         )
 
@@ -143,4 +151,4 @@ class SoulEngine:
                 return f"(Soul) LLM error: {e}"
             return text
             
-        return f"(Soul) received event: {event.name.value}"
+        return f"(Soul) received event: {event.name}"

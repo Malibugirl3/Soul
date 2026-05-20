@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(python -c \"from src.soul.contracts import *; print\\('All models imported OK'\\); print\\('MessageType values:', [m.value for m in MessageType]\\); print\\('UrgencyLevel values:', [u.value for u in UrgencyLevel]\\); print\\('SparkVerb values:', [s.value for s in SparkVerb]\\); print\\('EventName USER_MESSAGE:', EventName.USER_MESSAGE\\); n = NodeIdentity\\(node_id='test', node_type='reasoning'\\); print\\('NodeIdentity:', n.model_dump\\(\\)\\); a = ActionSchema\\(action_type='text.send', description='Send text'\\); print\\('ActionSchema:', a.model_dump\\(\\)\\); s = SparkMessage\\(verb=SparkVerb.notify, source_node='a', ts=0\\); print\\('SparkMessage:', s.model_dump\\(\\)\\)\")",
+      "Bash(python -c \"from src.soul.contracts import *; from src.soul.runtime.engine import SoulEngine; from src.soul.runtime.router import Router; from src.soul.runtime.session_manager import SessionManager; print\\('All existing runtime imports OK'\\)\")",
+      "Bash(python -c \"from src.soul.core import *; from src.soul.contracts import *; import asyncio; sm = SessionManager\\(\\); sa = StateAggregator\\(sm\\); nr = NodeRegistry\\(\\); ar = ActionRegistry\\(\\); eb = EventBus\\(\\); pl = Pipeline\\(node_registry=nr, event_bus=eb, state_aggregator=sa\\); router = Router\\(node_registry=nr, action_registry=ar, event_bus=eb, state_aggregator=sa, pipeline=pl\\); print\\('All Core components instantiated OK'\\); print\\('Router dispatch table:', list\\(router._dispatch.keys\\(\\)\\)\\)\")",
+      "Bash(python -m src.soul.connectors.websocket_server --standalone)",
+      "Bash(python tests/ws_client.py)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}
