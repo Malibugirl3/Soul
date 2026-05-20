@@ -149,6 +149,7 @@ class WebSocketSoulServer:
                 self._qq = QQConnector(
                     napcat_ws_url=qq_cfg.get("napcat_ws_url", "ws://127.0.0.1:3001"),
                     napcat_http_url=qq_cfg.get("napcat_http_url", "http://127.0.0.1:3000"),
+                    token=qq_cfg.get("token", ""),
                     router=self.router,
                 )
                 # Wire assistant reply → memory storage

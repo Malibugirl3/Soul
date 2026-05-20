@@ -36,10 +36,12 @@ class QQConnector:
         self,
         napcat_ws_url: str = "ws://127.0.0.1:3001",
         napcat_http_url: str = "http://127.0.0.1:3000",
+        token: str = "",
         router: Any = None,
     ) -> None:
         self._ws_url = napcat_ws_url
         self._http_url = napcat_http_url
+        self._token = token
         self._router = router
         self._ws: Optional[ClientConnection] = None
         self._running = False
@@ -54,9 +56,12 @@ class QQConnector:
     async def connect(self) -> None:
         """Connect to NapCat and start the event loop."""
         self._running = True
+        extra_headers = {}
+        if self._token:
+            extra_headers["Authorization"] = f"Bearer {self._token}"
         while self._running:
             try:
-                async with websockets.connect(self._ws_url) as ws:
+                async with websockets.connect(self._ws_url, additional_headers=extra_headers) as ws:
                     self._ws = ws
                     print(f"[QQ] Connected to NapCat at {self._ws_url}")
                     await self._recv_loop(ws)
@@ -141,7 +146,6 @@ class QQConnector:
 
         # Build Soul Event
         event = Event(
-            schema="soul.event/1",
             name="user.message",
             source=SourceInfo(
                 kind="user",

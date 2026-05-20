@@ -16,7 +16,14 @@
       "Bash(python -c \"from src.soul.connectors.qq_connector import QQConnector; print\\('OK'\\)\")",
       "Bash(python -c \"from src.soul.connectors.websocket_server import _load_persona, _load_config; print\\('OK'\\)\")",
       "Bash(pip install *)",
-      "Bash(timeout 15 python -c ' *)"
+      "Bash(timeout 15 python -c ' *)",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(python *)",
+      "Bash(where ollama *)",
+      "Bash(ollama list *)",
+      "Read(//d/Workspaces/FunPro/**)",
+      "Bash(dir /s /b \"C:\\\\Users\\\\Administrator\\\\*napcat*\")",
+      "Bash(dir /s /b \"D:\\\\*napcat*\")"
     ]
   }
 }

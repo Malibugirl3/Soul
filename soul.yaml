@@ -38,6 +38,7 @@ qq:
   enabled: false
   napcat_ws_url: "ws://127.0.0.1:3001"
   napcat_http_url: "http://127.0.0.1:3000"
+  token: "591uOEoel8M~XTXT"
 
 # Character persona — edit data/persona.yaml to change Soul's personality
 persona:
